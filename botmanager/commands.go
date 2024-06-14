@@ -56,6 +56,13 @@ func init() {
 			},
 			Handler: DebtHandler,
 		},
+		{
+			Command: slashapi.SlashCommandJson{
+				Name:        "reset",
+				Description: "スレッドの履歴を参照して賃借を再計算します",
+			},
+			Handler: ResetHandler,
+		},
 	}
 
 	InteractCommands = []InteractCommand{

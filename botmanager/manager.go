@@ -11,6 +11,10 @@ import (
 	"github.com/kohinigeee/DiscordDaityouBot/mylogger"
 )
 
+const (
+	ImageColorHex = 0xdb8fd7
+)
+
 var (
 	logger *slog.Logger
 )
@@ -121,31 +125,7 @@ func (manager *BotManager) MakeNormalMessageEmbed(title string, msg string, file
 	return embed
 }
 
-func (manager *BotManager) SendNormalMessage(channelID string, title string, msg string, fileds []*discordgo.MessageEmbedField) {
-
-	embed := manager.MakeNormalMessageEmbed(title, msg, fileds)
-
-	_, err := manager.Session.ChannelMessageSendEmbed(channelID, embed)
-	if err != nil {
-		logger.Error("Error sending message", slog.String("err", err.Error()))
-	}
-}
-
-func (manager *BotManager) SendNormalMessageWithSource(channelID string, title string, msg string, fileds []*discordgo.MessageEmbedField) {
-
-	embed := manager.MakeNormalMessageEmbed(title, msg, fileds)
-
-	_, err := manager.Session.ChannelMessageSendEmbed(channelID, embed)
-	if err != nil {
-		logger.Error("Error sending message", slog.String("err", err.Error()))
-	}
-
-	if err != nil {
-		logger.Error("Error sending message", slog.String("err", err.Error()))
-	}
-}
-
-func (manager *BotManager) SendErrorMessage(channelID string, title string, msg string, fileds []*discordgo.MessageEmbedField) {
+func (manager *BotManager) MakeErrorMessageEmbed(title string, msg string, fileds []*discordgo.MessageEmbedField) *discordgo.MessageEmbed {
 	embed := &discordgo.MessageEmbed{
 		Title:       title,
 		Description: msg,
@@ -158,6 +138,81 @@ func (manager *BotManager) SendErrorMessage(channelID string, title string, msg 
 	if fileds != nil {
 		embed.Fields = fileds
 	}
+
+	return embed
+}
+
+func (manager *BotManager) SendNormalMessageInteractionEdit(i *discordgo.Interaction, title string, msg string, fileds []*discordgo.MessageEmbedField) {
+
+	embed := manager.MakeNormalMessageEmbed(title, msg, fileds)
+
+	_, err := manager.Session.InteractionResponseEdit(i, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
+	})
+
+	if err != nil {
+		logger.Error("Error sending normal interaction message edit", slog.String("err", err.Error()))
+	}
+}
+
+func (manager *BotManager) SendErrorMessageInteractionEdit(i *discordgo.Interaction, title string, msg string, fileds []*discordgo.MessageEmbedField) {
+
+	embed := manager.MakeErrorMessageEmbed(title, msg, fileds)
+
+	_, err := manager.Session.InteractionResponseEdit(i, &discordgo.WebhookEdit{
+		Embeds: &[]*discordgo.MessageEmbed{embed},
+	})
+
+	if err != nil {
+		logger.Error("Error sending error interaction message edit", slog.String("err", err.Error()))
+	}
+}
+
+func (manager *BotManager) SendNormalMessageInteraction(i *discordgo.Interaction, msgType discordgo.InteractionResponseType, title string, msg string, fileds []*discordgo.MessageEmbedField) {
+
+	embed := manager.MakeNormalMessageEmbed(title, msg, fileds)
+
+	err := manager.Session.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: msgType,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{embed},
+		},
+	})
+
+	if err != nil {
+		logger.Error("Error sending normal message", slog.String("err", err.Error()))
+	}
+}
+
+func (manager *BotManager) SendErrorMessageInteracton(i *discordgo.Interaction, msgType discordgo.InteractionResponseType, title string, msg string, fileds []*discordgo.MessageEmbedField) {
+
+	embed := manager.MakeErrorMessageEmbed(title, msg, fileds)
+
+	err := manager.Session.InteractionRespond(i, &discordgo.InteractionResponse{
+		Type: msgType,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{embed},
+		},
+	})
+
+	if err != nil {
+		logger.Error("Error sending error message", slog.String("err", err.Error()))
+	}
+}
+
+func (manager *BotManager) SendNormalMessage(channelID string, title string, msg string, fileds []*discordgo.MessageEmbedField) {
+
+	embed := manager.MakeNormalMessageEmbed(title, msg, fileds)
+
+	_, err := manager.Session.ChannelMessageSendEmbed(channelID, embed)
+	if err != nil {
+		logger.Error("Error sending message", slog.String("err", err.Error()))
+	}
+}
+
+func (manager *BotManager) SendErrorMessage(channelID string, title string, msg string, fileds []*discordgo.MessageEmbedField) {
+
+	embed := manager.MakeErrorMessageEmbed(title, msg, fileds)
 
 	_, err := manager.Session.ChannelMessageSendEmbed(channelID, embed)
 	if err != nil {

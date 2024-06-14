@@ -59,6 +59,8 @@ func DebtHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manager *
 	}
 
 	contentStr := ""
+	contentStr += "(貸し主) -> (借り主) : (金額)\n"
+	contentStr += "---------------------------\n"
 	for _, state := range states {
 		if state.Amount == 0 {
 			continue
@@ -75,7 +77,7 @@ func DebtHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manager *
 
 	embed := &discordgo.MessageEmbed{
 		Title: "貸し借り状況",
-		Color: 0x00F1AA,
+		Color: ImageColorHex,
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
 			URL: manager.BotUserInfo.AvatarURL("24"),
 		},

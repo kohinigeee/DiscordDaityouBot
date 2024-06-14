@@ -19,6 +19,8 @@ const (
 
 	easyPayModalAmountInputID = "easypay_input_money"
 	easyPayModalDescInputID   = "easypay_input_desc"
+
+	easyPayMessageTitle = "Easy Pay"
 )
 
 type EasyPayData struct {
@@ -27,6 +29,33 @@ type EasyPayData struct {
 	amount        uint
 	desc          string
 	amountUnit    uint
+}
+
+func NewEasyPayDataFromIDs(manager *BotManager, authorID string, targetIDs []string, desc string, amount uint) (*EasyPayData, error) {
+	data := &EasyPayData{}
+
+	authorMember, err := lib.GetMemberFromID(manager.Session, manager.GuildID, authorID)
+	if err != nil {
+		return nil, err
+	}
+
+	targetMembers, err := lib.GetMembersFromIDs(manager.Session, manager.GuildID, targetIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	data.targetMembers = targetMembers
+	data.authorMember = authorMember
+	data.desc = desc
+
+	data.SetAmount(amount)
+	return data, nil
+}
+
+func (data *EasyPayData) SetAmount(amount uint) {
+	amountUnit := amount / uint(len(data.targetMembers)+1)
+	data.amount = amount
+	data.amountUnit = amountUnit
 }
 
 func deferEasyPay(userID string, manager *BotManager) {
@@ -255,18 +284,11 @@ func EasyPayModalHandler(s *discordgo.Session, i *discordgo.InteractionCreate, m
 		slog.String("desc", desc),
 	)
 
-	data.amount = amount
 	data.desc = desc
 
 	// -------台帳処理--------
-
-	number := len(data.targetMembers) + 1
-	amountUnit := amount / uint(number)
-	data.amountUnit = amountUnit
-	daityouManager := manager.GetDaityouManager()
-	for _, targetMamber := range data.targetMembers {
-		daityouManager.EasyPay(data.authorMember.User.ID, targetMamber.User.ID, amountUnit)
-	}
+	data.SetAmount(amount)
+	EasyPayApplyManager(manager, &data)
 
 	logger.Debug("EasyPay Calculation start")
 
@@ -292,10 +314,18 @@ func EasyPayModalHandler(s *discordgo.Session, i *discordgo.InteractionCreate, m
 	logger.Debug("EasyPayModalHandler finished")
 }
 
+func EasyPayApplyManager(manager *BotManager, data *EasyPayData) {
+
+	daityouManager := manager.GetDaityouManager()
+	for _, targetMamber := range data.targetMembers {
+		daityouManager.EasyPay(data.authorMember.User.ID, targetMamber.User.ID, data.amountUnit)
+	}
+}
+
 func makeEmbedRentHistory(authorNick string, authorUser *discordgo.User, botUser *discordgo.User, data *EasyPayData) *discordgo.MessageEmbed {
 	embed := &discordgo.MessageEmbed{
-		Title: "貸し借り履歴",
-		Color: 0x00F1AA,
+		Title: easyPayMessageTitle,
+		Color: ImageColorHex,
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
 			URL: botUser.AvatarURL("24"),
 		},
@@ -314,7 +344,7 @@ func makeEmbedRentHistory(authorNick string, authorUser *discordgo.User, botUser
 	})
 	fileds = append(fileds, &discordgo.MessageEmbedField{
 		Name:   "金額",
-		Value:  fmt.Sprintf("%d¥\n(%d¥/1人)", data.amount, data.amountUnit),
+		Value:  fmt.Sprintf("%d ¥\n(%d¥/1人)", data.amount, data.amountUnit),
 		Inline: true,
 	})
 
