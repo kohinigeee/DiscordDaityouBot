@@ -13,6 +13,7 @@ import (
 
 const (
 	ImageColorHex = 0xdb8fd7
+	isExcludeBOT  = false
 )
 
 var (

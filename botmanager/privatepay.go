@@ -11,64 +11,57 @@ import (
 )
 
 const (
-	EasyPaySelectUsersHandlerID = "easypay_select_users"
+	PrivatePaySelectUserHandlerID = "privatpay_select_users"
 
-	EasyPayModalName = "easypay_modal"
+	PrivatePayModalName   = "privatepay_modal"
+	privatePayCommandName = "PrivatePay"
 
-	easyPayCommandName = "EasyPay"
+	privatePayModalAmountInputID = "privatepay_input_money"
+	privatePayModalDescInputID   = "privatepay_input_desc"
 
-	easyPayModalAmountInputID = "easypay_input_money"
-	easyPayModalDescInputID   = "easypay_input_desc"
-
-	easyPayMessageTitle = "Easy Pay"
+	privatePayMessageTitle = "Private Pay"
 )
 
-type EasyPayData struct {
-	authorMember  *discordgo.Member
-	targetMembers []*discordgo.Member
-	amount        uint
-	desc          string
-	amountUnit    uint
+type PrivatePayData struct {
+	authorMember *discordgo.Member
+	targetMember *discordgo.Member
+	amount       uint
+	desc         string
 }
 
-func NewEasyPayDataFromIDs(manager *BotManager, authorID string, targetIDs []string, desc string, amount uint) (*EasyPayData, error) {
-	data := &EasyPayData{}
+func (data *PrivatePayData) SetAmount(amount uint) {
+	data.amount = amount
+}
 
+func deferPrivatePay(userID string, manager *BotManager) {
+	manager.DeleteHandlerMemory(privatePayCommandName, userID)
+}
+
+func NewPrivatePayDateFromID(manager *BotManager, authorID string, rentaledUserID string, desc string, amount uint) (*PrivatePayData, error) {
 	authorMember, err := lib.GetMemberFromID(manager.Session, manager.GuildID, authorID)
 	if err != nil {
 		return nil, err
 	}
 
-	targetMembers, err := lib.GetMembersFromIDs(manager.Session, manager.GuildID, targetIDs)
+	rentaledMember, err := lib.GetMemberFromID(manager.Session, manager.GuildID, rentaledUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	data.targetMembers = targetMembers
-	data.authorMember = authorMember
-	data.desc = desc
-
-	data.SetAmount(amount)
-	return data, nil
+	return &PrivatePayData{
+		authorMember: authorMember,
+		targetMember: rentaledMember,
+		amount:       amount,
+		desc:         desc,
+	}, nil
 }
 
-func (data *EasyPayData) SetAmount(amount uint) {
-	amountUnit := amount / uint(len(data.targetMembers)+1)
-	data.amount = amount
-	data.amountUnit = amountUnit
-}
-
-func deferEasyPay(userID string, manager *BotManager) {
-	manager.DeleteHandlerMemory(easyPayCommandName, userID)
-}
-
-// ユーザーを選択するハンドラ
-func EasyPayHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manager *BotManager) {
+func PrivatePayHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manager *BotManager) {
 	logger := mylogger.L()
-	logger.Debug("EasyPayHandler started", slog.String("user", fmt.Sprintf("%+v", i.Member.User.Username)), slog.String("ID", i.ID), slog.String("InteractionID", i.Interaction.ID))
+	logger.Debug("PrivatePayHandler started", slog.String("user", fmt.Sprintf("%+v", i.Member.User.Username)), slog.String("ID", i.ID), slog.String("InteractionID", i.Interaction.ID))
 
+	const handlerName = "Private Pay"
 	authorID := i.Member.User.ID
-	const handlerName = "Easy Pay"
 
 	users, err := lib.GetAllGuildMembers(s, i.GuildID)
 
@@ -111,12 +104,13 @@ func EasyPayHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manage
 	}
 
 	var minValues = 1
+
 	selectMenu := discordgo.SelectMenu{
-		CustomID:    EasyPaySelectUsersHandlerID,
+		CustomID:    PrivatePaySelectUserHandlerID,
 		Options:     options,
-		MaxValues:   len(options),
+		MaxValues:   1,
 		MinValues:   &minValues,
-		Placeholder: "貸し先を選択してください",
+		Placeholder: "貸すユーザーを選択してください",
 	}
 
 	actionRow := discordgo.ActionsRow{
@@ -138,63 +132,58 @@ func EasyPayHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manage
 	if err != nil {
 		logger.Error("Error sending message", slog.String("err", err.Error()))
 
-		deferEasyPay(authorID, manager)
+		deferPrivatePay(authorID, manager)
 		return
 	}
 
-	logger.Debug("EasyPayHandler finished")
+	logger.Debug("PrivatePayHandler finished")
 }
 
 // ユーザーを選択した後のハンドラ
 // 金額と使途を入力するモーダルを表示
-func EasyPaySelectUsersHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manager *BotManager) {
+
+func PrivatePaySelectUserHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manager *BotManager) {
 	logger := mylogger.L()
 
-	logger.Debug("EasyPaySelectUsersHandler started", slog.String("user", fmt.Sprintf("%+v", i.Member.User.Username)), slog.String("ID", i.ID), slog.String("InteractionID", i.Interaction.ID))
+	logger.Debug("PrivatePaySelectUserHandler started", slog.String("user", fmt.Sprintf("%+v", i.Member.User.Username)), slog.String("ID", i.ID), slog.String("InteractionID", i.Interaction.ID))
 
-	var selectedUsers []*discordgo.Member
+	var selectedMember *discordgo.Member
+	authorID := i.Member.User.ID
 
-	//--------セレクトメニューの処理---------
-	for _, userID := range i.MessageComponentData().Values {
-		member, err := s.GuildMember(i.GuildID, userID)
+	// 選択されたユーザーを取得
 
-		if err != nil {
-			logger.Error("Error getting user", slog.String("err", err.Error()))
-			continue
-		}
+	userID := i.MessageComponentData().Values[0]
+	selectedMember, err := s.GuildMember(i.GuildID, userID)
+	if err != nil {
+		logger.Error("Error getting selected user", slog.String("err", err.Error()))
 
-		selectedUsers = append(selectedUsers, member)
-	}
+		errmsg := "ユーザーの取得に失敗しました"
+		manager.SendErrorMessage(i.ChannelID, privatePayCommandName, errmsg, nil)
 
-	if len(selectedUsers) == 0 {
-		logger.Error("Error getting user", slog.String("err", "no user selected"))
-		errmsg := "ユーザーが選択されていません"
-		manager.SendErrorMessage(i.ChannelID, "EasyPay", errmsg, nil)
-
-		deferEasyPay(i.Member.User.ID, manager)
+		deferPrivatePay(i.Member.User.ID, manager)
 		return
 	}
 
-	authorID := i.Member.User.ID
-	data := EasyPayData{
-		authorMember:  i.Member,
-		targetMembers: selectedUsers,
+	data := &PrivatePayData{
+		authorMember: i.Member,
+		targetMember: selectedMember,
 	}
 
-	manager.SetHandlerMemory(easyPayCommandName, authorID, data)
+	manager.SetHandlerMemory(privatePayCommandName, authorID, data)
 
 	//-----------モーダルの生成-----------
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
-			CustomID: EasyPayModalName,
-			Title:    "Easy Pay",
+			CustomID: PrivatePayModalName,
+			Title:    "Private Pay",
 			Components: []discordgo.MessageComponent{
 				&discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
-							CustomID:    easyPayModalAmountInputID,
-							Label:       "金額の総額を入力してください (例: 1000)",
+							CustomID:    privatePayModalAmountInputID,
+							Label:       "相手に支払う金額を入力してください (例: 1000)",
 							Placeholder: "15000",
 							Style:       discordgo.TextInputShort,
 							Required:    true,
@@ -204,7 +193,7 @@ func EasyPaySelectUsersHandler(s *discordgo.Session, i *discordgo.InteractionCre
 				&discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
-							CustomID:    easyPayModalDescInputID,
+							CustomID:    privatePayModalDescInputID,
 							Label:       "お金の使途を入力してください",
 							Style:       discordgo.TextInputShort,
 							Placeholder: "ランチ代",
@@ -217,42 +206,42 @@ func EasyPaySelectUsersHandler(s *discordgo.Session, i *discordgo.InteractionCre
 	})
 
 	if err != nil {
-		logger.Error("Error responding to interaction", slog.String("err", err.Error()))
+		logger.Error("Error sending message", slog.String("err", err.Error()))
 
-		deferEasyPay(authorID, manager)
+		deferPrivatePay(authorID, manager)
 		return
 	}
 
-	logger.Debug("EasyPaySelectUsersHandler finished")
+	logger.Debug("PrivatePaySelectUserHandler finished")
 }
 
 // 金額と使途を入力後のハンドラ
 // 台帳処理を行う
-func EasyPayModalHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manager *BotManager) {
-
-	const commandName = "Easy Pay"
+func PrivatePayModalHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manager *BotManager) {
+	const commandName = "Private Pay"
 
 	logger := mylogger.L()
-	logger.Debug("EasyPayModalHandler started", slog.String("user", fmt.Sprintf("%+v", i.Member.User.Username)), slog.String("ID", i.ID), slog.String("InteractionID", i.Interaction.ID))
+	logger.Debug("PrivatePayModalHandler started", slog.String("user", fmt.Sprintf("%+v", i.Member.User.Username)), slog.String("ID", i.ID), slog.String("InteractionID", i.Interaction.ID))
 
 	authorID := i.Member.User.ID
 
-	// -------メモリのデータを取得--------
-	data, ok := manager.GetHandlerMemory(easyPayCommandName, authorID).(EasyPayData)
+	//-------メモリのデータを取得-------
+	data, ok := manager.GetHandlerMemory(privatePayCommandName, authorID).(*PrivatePayData)
 
 	if !ok {
-		logger.Error("Error getting handler memory", slog.String("err", "failed to assert handler memory"))
-		errmsg := "ハンドラメモリの取得に失敗しました"
-		manager.SendErrorMessage(i.ChannelID, "EasyPay", errmsg, nil)
+		logger.Error("Error getting handler memory", slog.String("err", "type assertion error"))
 
-		deferEasyPay(authorID, manager)
+		errmsg := "データの取得に失敗しました"
+		manager.SendErrorMessage(i.ChannelID, commandName, errmsg, nil)
+
+		deferPrivatePay(authorID, manager)
 		return
 	}
 
-	logger.Debug("EasyPayModalHandler GetMemoryData")
+	logger.Debug("PrivatePayMOdalHandler GetMemoryData")
 	fmt.Printf("%+v\n", data)
 
-	// -------モーダルのデータを取得--------
+	//-------モーダルのデータを取得-------
 
 	modalData := i.ModalSubmitData()
 	amountStr := lib.GetModalDataValue(&modalData, 0, 0)
@@ -279,23 +268,20 @@ func EasyPayModalHandler(s *discordgo.Session, i *discordgo.InteractionCreate, m
 
 	amount := uint(amountInt)
 
-	logger.Debug("EasyPayModalHandler GetModalData",
+	logger.Debug("PrivatePayModalHandler GetModalData",
 		slog.Int("amount", int(amount)),
 		slog.String("desc", desc),
 	)
 
 	data.desc = desc
 
-	// -------台帳処理--------
-	data.SetAmount(amount)
-	EasyPayApplyManager(manager, &data)
+	//-------台帳処理-------
+	logger.Debug("PrivatePayCalculation start")
 
-	logger.Debug("EasyPay Calculation start")
+	data.SetAmount(amount)
+	PrivatePayApplyManager(manager, data)
 
 	link := fmt.Sprintf("https://discord.com/channels/%s/%s", i.GuildID, manager.RestoreThreadID)
-
-	logger.Debug("EasyPay Calculation finished",
-		slog.String("link", link))
 
 	notionEmbed := manager.MakeNormalMessageEmbed("Easy Pay", fmt.Sprintf("お金のやりとりが完了したぶぅ\n(%s)", link), nil)
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -306,25 +292,24 @@ func EasyPayModalHandler(s *discordgo.Session, i *discordgo.InteractionCreate, m
 	})
 
 	nick := lib.GetGuildNick(s, i.GuildID, authorID)
-	embed := makeEmbedRentHistory(nick, data.authorMember.User, manager.BotUserInfo, &data)
+	embed := makePrivatePayRentHistoryEmbed(nick, i.Member.User, manager.BotUserInfo, data)
 
 	s.ChannelMessageSendEmbed(manager.RestoreThreadID, embed)
 
-	deferEasyPay(authorID, manager)
-	logger.Debug("EasyPayModalHandler finished")
+	deferPrivatePay(authorID, manager)
+	logger.Debug("PrivatePayModalHandler finished")
 }
 
-func EasyPayApplyManager(manager *BotManager, data *EasyPayData) {
-
+func PrivatePayApplyManager(manager *BotManager, data *PrivatePayData) {
 	daityouManager := manager.GetDaityouManager()
-	for _, targetMamber := range data.targetMembers {
-		daityouManager.EasyPay(data.authorMember.User.ID, targetMamber.User.ID, data.amountUnit)
-	}
+	targetID := data.targetMember.User.ID
+	authorID := data.authorMember.User.ID
+	daityouManager.EasyPay(authorID, targetID, data.amount)
 }
 
-func makeEmbedRentHistory(authorNick string, authorUser *discordgo.User, botUser *discordgo.User, data *EasyPayData) *discordgo.MessageEmbed {
+func makePrivatePayRentHistoryEmbed(authorNick string, authorUser *discordgo.User, botUser *discordgo.User, data *PrivatePayData) *discordgo.MessageEmbed {
 	embed := &discordgo.MessageEmbed{
-		Title: easyPayMessageTitle,
+		Title: privatePayMessageTitle,
 		Color: ImageColorHex,
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
 			URL: botUser.AvatarURL("24"),
@@ -343,8 +328,13 @@ func makeEmbedRentHistory(authorNick string, authorUser *discordgo.User, botUser
 		Inline: true,
 	})
 	fileds = append(fileds, &discordgo.MessageEmbedField{
+		Name:   "借り主",
+		Value:  data.targetMember.User.Mention(),
+		Inline: true,
+	})
+	fileds = append(fileds, &discordgo.MessageEmbedField{
 		Name:   "金額",
-		Value:  fmt.Sprintf("%d ¥\n(%d¥/1人)", data.amount, data.amountUnit),
+		Value:  fmt.Sprintf("%d ¥", data.amount),
 		Inline: true,
 	})
 
@@ -352,18 +342,6 @@ func makeEmbedRentHistory(authorNick string, authorUser *discordgo.User, botUser
 		Name:   "使途",
 		Value:  data.desc,
 		Inline: true,
-	})
-
-	//貸し先のユーザーを表示
-	membersStr := ""
-	for _, member := range data.targetMembers {
-		membersStr += member.User.Mention() + "  "
-	}
-
-	fileds = append(fileds, &discordgo.MessageEmbedField{
-		Name:   "借り主",
-		Value:  membersStr,
-		Inline: false,
 	})
 
 	embed.Fields = fileds

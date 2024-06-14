@@ -38,9 +38,16 @@ func init() {
 		{
 			Command: slashapi.SlashCommandJson{
 				Name:        "easypay",
-				Description: "お金の支払いを記録します",
+				Description: "複数人へのお金の支払いを記録します",
 			},
 			Handler: EasyPayHandler,
+		},
+		{
+			Command: slashapi.SlashCommandJson{
+				Name:        "privatepay",
+				Description: "個人へのお金の支払いを記録します",
+			},
+			Handler: PrivatePayHandler,
 		},
 		{
 			Command: slashapi.SlashCommandJson{
@@ -70,12 +77,20 @@ func init() {
 			Name:    EasyPaySelectUsersHandlerID,
 			Handler: EasyPaySelectUsersHandler,
 		},
+		{
+			Name:    PrivatePaySelectUserHandlerID,
+			Handler: PrivatePaySelectUserHandler,
+		},
 	}
 
 	DiscordModalCommands = []DiscordModalCommand{
 		{
 			Name:    EasyPayModalName,
 			Handler: EasyPayModalHandler,
+		},
+		{
+			Name:    PrivatePayModalName,
+			Handler: PrivatePayModalHandler,
 		},
 	}
 

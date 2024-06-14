@@ -58,8 +58,11 @@ func DebtHandler(s *discordgo.Session, i *discordgo.InteractionCreate, manager *
 		return result
 	}
 
+	link := fmt.Sprintf("https://discord.com/channels/%s/%s", i.GuildID, manager.RestoreThreadID)
+
 	contentStr := ""
 	contentStr += "(貸し主) -> (借り主) : (金額)\n"
+	contentStr += fmt.Sprintf("%s\n", link)
 	contentStr += "---------------------------\n"
 	for _, state := range states {
 		if state.Amount == 0 {

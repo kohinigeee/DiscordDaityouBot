@@ -20,7 +20,8 @@ type resetHandlerCalcFunc func(s *discordgo.Session, i *discordgo.InteractionCre
 
 var (
 	funcMap map[string]resetHandlerCalcFunc = map[string]resetHandlerCalcFunc{
-		easyPayMessageTitle: calcEasyPayMessage,
+		easyPayMessageTitle:    calcEasyPayMessage,
+		privatePayMessageTitle: calcPrivatePayMessage,
 	}
 )
 
@@ -178,4 +179,52 @@ func calcEasyPayMessage(s *discordgo.Session, i *discordgo.InteractionCreate, ma
 	EasyPayApplyManager(manager, data)
 
 	logger.Debug("calcEasyPayMessage finished")
+}
+
+func calcPrivatePayMessage(s *discordgo.Session, i *discordgo.InteractionCreate, manager *BotManager, message *discordgo.Message) {
+
+	logger := mylogger.L()
+	logger.Debug("calcPrivatePayMessage started")
+
+	embed := message.Embeds[0]
+	fileds := embed.Fields
+
+	getIDs := func(fileds []*discordgo.MessageEmbedField) (authorID string, rentaledUserID string, err error) {
+		err = nil
+		authorID, err = lib.GetIDFromMention(fileds[0].Value)
+		if err != nil {
+			return
+		}
+
+		rentaledUserID, err = lib.GetIDFromMention(fileds[1].Value)
+		if err != nil {
+			return
+		}
+		return
+	}
+
+	authorID, rentaledUserID, err := getIDs(fileds)
+	amount := strToAmount(fileds[2].Value)
+	desc := fileds[3].Value
+	if err != nil {
+		logger.Error("Error getting IDs", slog.String("error", err.Error()))
+		return
+	}
+
+	logger.Debug("calcPrivatePayMessage 整形後",
+		slog.String("authorID", authorID),
+		slog.String("rentaledUserID", rentaledUserID),
+		slog.Int("amount", int(amount)),
+	)
+
+	data, err := NewPrivatePayDateFromID(manager, authorID, rentaledUserID, desc, amount)
+
+	if err != nil {
+		logger.Error("Error creating PrivatePayData", slog.String("error", err.Error()))
+		return
+	}
+
+	PrivatePayApplyManager(manager, data)
+
+	logger.Debug("calcPrivatePayMessage finished")
 }
